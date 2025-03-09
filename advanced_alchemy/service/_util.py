@@ -4,22 +4,23 @@ RepositoryService object is generic on the domain model type which
 should be a SQLAlchemy model.
 """
 
-from __future__ import annotations
-
+import datetime
 from collections.abc import Sequence
+from enum import Enum
 from functools import partial
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Any, Callable, cast, overload
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union, cast, overload
 from uuid import UUID
 
 from advanced_alchemy.exceptions import AdvancedAlchemyError
-from advanced_alchemy.filters import LimitOffset
+from advanced_alchemy.filters import LimitOffset, StatementFilter
 from advanced_alchemy.repository.typing import ModelOrRowMappingT
 from advanced_alchemy.service.pagination import OffsetPagination
 from advanced_alchemy.service.typing import (
     MSGSPEC_INSTALLED,
     PYDANTIC_INSTALLED,
     BaseModel,
+    FilterTypeT,
     ModelDTOT,
     Struct,
     convert,
@@ -30,16 +31,22 @@ if TYPE_CHECKING:
     from sqlalchemy import ColumnElement, RowMapping
 
     from advanced_alchemy.base import ModelProtocol
-    from advanced_alchemy.filters import StatementFilter
-    from advanced_alchemy.service.typing import FilterTypeT
 
 __all__ = ("ResultConverter", "find_filter")
+
+DEFAULT_TYPE_DECODERS = [  # pyright: ignore[reportUnknownVariableType]
+    (lambda x: x is UUID, lambda t, v: t(v.hex)),  # pyright: ignore[reportUnknownLambdaType,reportUnknownMemberType]
+    (lambda x: x is datetime.datetime, lambda t, v: t(v.isoformat())),  # pyright: ignore[reportUnknownLambdaType,reportUnknownMemberType]
+    (lambda x: x is datetime.date, lambda t, v: t(v.isoformat())),  # pyright: ignore[reportUnknownLambdaType,reportUnknownMemberType]
+    (lambda x: x is datetime.time, lambda t, v: t(v.isoformat())),  # pyright: ignore[reportUnknownLambdaType,reportUnknownMemberType]
+    (lambda x: x is Enum, lambda t, v: t(v.value)),  # pyright: ignore[reportUnknownLambdaType,reportUnknownMemberType]
+]
 
 
 def _default_msgspec_deserializer(
     target_type: Any,
     value: Any,
-    type_decoders: Sequence[tuple[Callable[[Any], bool], Callable[[Any, Any], Any]]] | None = None,
+    type_decoders: "Union[Sequence[tuple[Callable[[Any], bool], Callable[[Any, Any], Any]]], None]" = None,
 ) -> Any:  # pragma: no cover
     """Transform values non-natively supported by ``msgspec``
 
@@ -63,14 +70,17 @@ def _default_msgspec_deserializer(
     if issubclass(target_type, (Path, PurePath, UUID)):
         return target_type(value)
 
-    msg = f"Unsupported type: {type(value)!r}"
-    raise TypeError(msg)
+    try:
+        return target_type(value)
+    except Exception as e:
+        msg = f"Unsupported type: {type(value)!r}"
+        raise TypeError(msg) from e
 
 
 def find_filter(
     filter_type: type[FilterTypeT],
-    filters: Sequence[StatementFilter | ColumnElement[bool]] | Sequence[StatementFilter],
-) -> FilterTypeT | None:
+    filters: "Union[Sequence[Union[StatementFilter, ColumnElement[bool]]], Sequence[StatementFilter]]",
+) -> "Union[FilterTypeT, None]":
     """Get the filter specified by filter type from the filters.
 
     Args:
@@ -81,7 +91,7 @@ def find_filter(
         The match filter instance or None
     """
     return next(
-        (cast("FilterTypeT | None", filter_) for filter_ in filters if isinstance(filter_, filter_type)),
+        (cast("Optional[FilterTypeT]", filter_) for filter_ in filters if isinstance(filter_, filter_type)),
         None,
     )
 
@@ -103,8 +113,8 @@ class ResultConverter:
     def to_schema(
         self,
         data: ModelOrRowMappingT,
-        total: int | None = None,
-        filters: Sequence[StatementFilter | ColumnElement[bool]] | Sequence[StatementFilter] | None = None,
+        total: "Optional[int]" = None,
+        filters: "Union[Sequence[Union[StatementFilter, ColumnElement[bool]]], Sequence[StatementFilter], None]" = None,
         *,
         schema_type: None = None,
     ) -> ModelOrRowMappingT: ...
@@ -112,9 +122,9 @@ class ResultConverter:
     @overload
     def to_schema(
         self,
-        data: Sequence[ModelOrRowMappingT],
-        total: int | None = None,
-        filters: Sequence[StatementFilter | ColumnElement[bool]] | Sequence[StatementFilter] | None = None,
+        data: "Sequence[ModelOrRowMappingT]",
+        total: "Optional[int]" = None,
+        filters: "Union[Sequence[Union[StatementFilter, ColumnElement[bool]]], Sequence[StatementFilter], None]" = None,
         *,
         schema_type: None = None,
     ) -> OffsetPagination[ModelOrRowMappingT]: ...
@@ -122,9 +132,9 @@ class ResultConverter:
     @overload
     def to_schema(
         self,
-        data: ModelProtocol | RowMapping,
-        total: int | None = None,
-        filters: Sequence[StatementFilter | ColumnElement[bool]] | Sequence[StatementFilter] | None = None,
+        data: "Union[ModelProtocol, RowMapping]",
+        total: "Optional[int]" = None,
+        filters: "Union[Sequence[Union[StatementFilter, ColumnElement[bool]]], Sequence[StatementFilter], None]" = None,
         *,
         schema_type: type[ModelDTOT],
     ) -> ModelDTOT: ...
@@ -132,26 +142,21 @@ class ResultConverter:
     @overload
     def to_schema(
         self,
-        data: Sequence[ModelProtocol] | Sequence[RowMapping],
-        total: int | None = None,
-        filters: Sequence[StatementFilter | ColumnElement[bool]] | Sequence[StatementFilter] | None = None,
+        data: "Union[Sequence[ModelProtocol], Sequence[RowMapping]]",
+        total: "Optional[int]" = None,
+        filters: "Union[Sequence[Union[StatementFilter, ColumnElement[bool]]], Sequence[StatementFilter], None]" = None,
         *,
         schema_type: type[ModelDTOT],
-    ) -> OffsetPagination[ModelDTOT]: ...
+    ) -> "OffsetPagination[ModelDTOT]": ...
 
     def to_schema(
         self,
-        data: ModelOrRowMappingT
-        | Sequence[ModelOrRowMappingT]
-        | ModelProtocol
-        | Sequence[ModelProtocol]
-        | RowMapping
-        | Sequence[RowMapping],
-        total: int | None = None,
-        filters: Sequence[StatementFilter | ColumnElement[bool]] | Sequence[StatementFilter] | None = None,
+        data: "Union[ModelOrRowMappingT, Sequence[ModelOrRowMappingT], ModelProtocol, Sequence[ModelProtocol], RowMapping, Sequence[RowMapping]]",
+        total: "Optional[int]" = None,
+        filters: "Union[Sequence[Union[StatementFilter, ColumnElement[bool]]], Sequence[StatementFilter], None]" = None,
         *,
-        schema_type: type[ModelDTOT] | None = None,
-    ) -> ModelOrRowMappingT | OffsetPagination[ModelOrRowMappingT] | ModelDTOT | OffsetPagination[ModelDTOT]:
+        schema_type: "Optional[type[ModelDTOT]]" = None,
+    ) -> "Union[ModelOrRowMappingT, OffsetPagination[ModelOrRowMappingT], ModelDTOT, OffsetPagination[ModelDTOT]]":
         """Convert the object to a response schema.
 
         When `schema_type` is None, the model is returned with no conversion.
@@ -189,9 +194,7 @@ class ResultConverter:
                         from_attributes=True,
                         dec_hook=partial(
                             _default_msgspec_deserializer,
-                            type_decoders=[
-                                (lambda x: x is UUID, lambda t, v: t(v.hex)),
-                            ],
+                            type_decoders=DEFAULT_TYPE_DECODERS,
                         ),
                     ),
                 )
@@ -205,9 +208,7 @@ class ResultConverter:
                     from_attributes=True,
                     dec_hook=partial(
                         _default_msgspec_deserializer,
-                        type_decoders=[
-                            (lambda x: x is UUID, lambda t, v: t(v.hex)),
-                        ],
+                        type_decoders=DEFAULT_TYPE_DECODERS,
                     ),
                 ),
                 limit=limit_offset.limit,

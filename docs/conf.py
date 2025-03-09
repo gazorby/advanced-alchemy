@@ -15,7 +15,7 @@ from advanced_alchemy.__metadata__ import __project__, __version__
 if TYPE_CHECKING:
     from typing import Any
 
-    from sphinx.addnodes import document
+    from sphinx.addnodes import document  # type: ignore[attr-defined,unused-ignore]
     from sphinx.application import Sphinx
 
 # -- Environmental Data ------------------------------------------------------
@@ -78,6 +78,9 @@ PY_FUNC = "py:func"
 nitpicky = True
 nitpick_ignore: list[str] = []
 nitpick_ignore_regex: list[str] = []
+
+auto_pytabs_min_version = (3, 9)
+auto_pytabs_max_version = (3, 13)
 
 napoleon_google_docstring = True
 napoleon_include_special_with_doc = True
@@ -148,6 +151,11 @@ autodoc_type_aliases = {
     "Engine": "sqlalchemy.engine.Engine",
     "sqlalchemy": "sqlalchemy",
     "RenameStrategy": "litestar.dto.types.RenameStrategy",
+    "Union": "typing.Union",
+    "Callable": "typing.Callable",
+    "Any": "typing.Any",
+    "Optional": "typing.Optional",
+    "_EchoFlagType": "advanced_alchemy.config._EchoFlagType",
 }
 autodoc_mock_imports = [
     "alembic",
