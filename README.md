@@ -33,9 +33,14 @@ offering:
 - Integration with major web frameworks including Litestar, Starlette, FastAPI, Sanic
 - Custom-built alembic configuration and CLI with optional framework integration
 - Utility base classes with audit columns, primary keys and utility functions
+- Built in `File Object` data type for storing objects:
+    - Unified interface for various storage backends ([`fsspec`](https://filesystem-spec.readthedocs.io/en/latest/) and [`obstore`](https://developmentseed.org/obstore/latest/))
+    - Optional lifecycle event hooks integrated with SQLAlchemy's event system to automatically save and delete files as records are inserted, updated, or deleted.
 - Optimized JSON types including a custom JSON type for Oracle
 - Integrated support for UUID6 and UUID7 using [`uuid-utils`](https://github.com/aminalaee/uuid-utils) (install with the `uuid` extra)
 - Integrated support for Nano ID using [`fastnanoid`](https://github.com/oliverlambson/fastnanoid) (install with the `nanoid` extra)
+- Custom encrypted text type with multiple backend support including [`pgcrypto`](https://www.postgresql.org/docs/current/pgcrypto.html) for PostgreSQL and the Fernet implementation from [`cryptography`](https://cryptography.io/en/latest/) for other databases
+- Custom password hashing type with multiple backend support including [`Argon2`](https://github.com/P-H-C/phc-winner-argon2), [`Passlib`](https://passlib.readthedocs.io/en/stable/), and [`Pwdlib`](https://pwdlib.readthedocs.io/en/stable/) with automatic salt generation
 - Pre-configured base classes with audit columns UUID or Big Integer primary keys and
   a [sentinel column](https://docs.sqlalchemy.org/en/20/core/connections.html#configuring-sentinel-columns).
 - Synchronous and asynchronous repositories featuring:
@@ -333,7 +338,7 @@ or the [project-specific GitHub discussions page][project-discussions].
 [project-discussions]: https://github.com/litestar-org/advanced-alchemy/discussions
 [project-docs]: https://docs.advanced-alchemy.litestar.dev
 [install-guide]: https://docs.advanced-alchemy.litestar.dev/latest/#installation
-[fastapi-example]: https://github.com/litestar-org/advanced-alchemy/blob/main/examples/fastapi_service.py
+[fastapi-example]: https://github.com/litestar-org/advanced-alchemy/blob/main/examples/fastapi/fastapi_service.py
 [flask-example]: https://github.com/litestar-org/advanced-alchemy/blob/main/examples/flask/flask_services.py
-[litestar-example]: https://github.com/litestar-org/advanced-alchemy/blob/main/examples/litestar.py
+[litestar-example]: https://github.com/litestar-org/advanced-alchemy/blob/main/examples/litestar/litestar_service.py
 [standalone-example]: https://github.com/litestar-org/advanced-alchemy/blob/main/examples/standalone.py

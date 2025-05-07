@@ -1,3 +1,4 @@
+# ruff: noqa: PLR6301
 """Service object implementation for SQLAlchemy.
 
 RepositoryService object is generic on the domain model type which
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio.scoping import async_scoped_session
 from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.selectable import ForUpdateParameter
 from typing_extensions import Self
 
 from advanced_alchemy.config.asyncio import SQLAlchemyAsyncConfig
@@ -67,7 +69,10 @@ class SQLAlchemyAsyncQueryService(ResultConverter):
 
         Handles construction of the database session._create_select_for_model
 
-        Returns:
+        Raises:
+            AdvancedAlchemyError: If no configuration or session is provided.
+
+        Yields:
             The service object instance.
         """
         if not config and not session:
@@ -106,7 +111,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         auto_refresh: bool = True,
         auto_commit: bool = False,
         order_by: Optional[Union[list[OrderingPair], OrderingPair]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         wrap_exceptions: bool = True,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
@@ -157,7 +162,14 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
 
     @property
     def repository(self) -> SQLAlchemyAsyncRepositoryT:
-        """Return the repository instance."""
+        """Return the repository instance.
+
+        Raises:
+            ImproperConfigurationError: If the repository is not initialized.
+
+        Returns:
+            The repository instance.
+        """
         if not self._repository_instance:
             msg = "Repository not initialized"
             raise ImproperConfigurationError(msg)
@@ -172,7 +184,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         self,
         *filters: Union[StatementFilter, ColumnElement[bool]],
         statement: Optional[Select[tuple[ModelT]]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -206,7 +218,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
     async def exists(
         self,
         *filters: Union[StatementFilter, ColumnElement[bool]],
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -242,7 +254,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         statement: Optional[Select[tuple[ModelT]]] = None,
         id_attribute: Optional[Union[str, InstrumentedAttribute[Any]]] = None,
         auto_expunge: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -284,7 +296,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         statement: Optional[Select[tuple[ModelT]]] = None,
         auto_expunge: Optional[bool] = None,
         load: Optional[LoadSpec] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
         **kwargs: Any,
@@ -324,7 +336,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         *filters: Union[StatementFilter, ColumnElement[bool]],
         statement: Optional[Select[tuple[ModelT]]] = None,
         auto_expunge: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -414,6 +426,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         Args:
             data: Representations to be created.
             operation: Optional operation flag so that you can provide behavior based on CRUD operation
+
         Returns:
             Representation of created instances.
         """
@@ -452,7 +465,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         auto_expunge: Optional[bool] = None,
         count_with_window_function: Optional[bool] = None,
         order_by: Optional[Union[list[OrderingPair], OrderingPair]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -499,7 +512,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         session: Optional[Union[AsyncSession, async_scoped_session[AsyncSession]]] = None,
         statement: Optional[Select[tuple[ModelT]]] = None,
         config: Optional[SQLAlchemyAsyncConfig] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -509,7 +522,10 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
 
         Handles construction of the database session._create_select_for_model
 
-        Returns:
+        Raises:
+            AdvancedAlchemyError: If no configuration or session is provided.
+
+        Yields:
             The service object instance.
         """
         if not config and not session:
@@ -543,7 +559,7 @@ class SQLAlchemyAsyncRepositoryReadService(ResultConverter, Generic[ModelT, SQLA
         statement: Optional[Select[tuple[ModelT]]] = None,
         auto_expunge: Optional[bool] = None,
         order_by: Optional[Union[list[OrderingPair], OrderingPair]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -595,7 +611,7 @@ class SQLAlchemyAsyncRepositoryService(
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
         auto_refresh: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
     ) -> "ModelT":
         """Wrap repository instance creation.
 
@@ -628,7 +644,7 @@ class SQLAlchemyAsyncRepositoryService(
         *,
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
     ) -> Sequence[ModelT]:
         """Wrap repository bulk instance creation.
 
@@ -662,12 +678,12 @@ class SQLAlchemyAsyncRepositoryService(
         item_id: Optional[Any] = None,
         *,
         attribute_names: Optional[Iterable[str]] = None,
-        with_for_update: Optional[bool] = None,
+        with_for_update: ForUpdateParameter = None,
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
         auto_refresh: Optional[bool] = None,
         id_attribute: Optional[Union[str, InstrumentedAttribute[Any]]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -692,6 +708,9 @@ class SQLAlchemyAsyncRepositoryService(
             load: Set default relationships to be loaded
             execution_options: Set default execution options
             uniquify: Optionally apply the ``unique()`` method to results before returning.
+
+        Raises:
+            RepositoryError: If no configuration or session is provided.
 
         Returns:
             Updated representation.
@@ -735,7 +754,7 @@ class SQLAlchemyAsyncRepositoryService(
         *,
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -777,12 +796,12 @@ class SQLAlchemyAsyncRepositoryService(
         item_id: Optional[Any] = None,
         *,
         attribute_names: Optional[Iterable[str]] = None,
-        with_for_update: Optional[bool] = None,
+        with_for_update: ForUpdateParameter = None,
         auto_expunge: Optional[bool] = None,
         auto_commit: Optional[bool] = None,
         auto_refresh: Optional[bool] = None,
         match_fields: Optional[Union[list[str], str]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -841,7 +860,7 @@ class SQLAlchemyAsyncRepositoryService(
         auto_commit: Optional[bool] = None,
         no_merge: bool = False,
         match_fields: Optional[Union[list[str], str]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -888,11 +907,11 @@ class SQLAlchemyAsyncRepositoryService(
         match_fields: Optional[Union[list[str], str]] = None,
         upsert: bool = True,
         attribute_names: Optional[Iterable[str]] = None,
-        with_for_update: Optional[bool] = None,
+        with_for_update: ForUpdateParameter = None,
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
         auto_refresh: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -951,11 +970,11 @@ class SQLAlchemyAsyncRepositoryService(
         *filters: Union[StatementFilter, ColumnElement[bool]],
         match_fields: Optional[Union[list[str], str]] = None,
         attribute_names: Optional[Iterable[str]] = None,
-        with_for_update: Optional[bool] = None,
+        with_for_update: ForUpdateParameter = None,
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
         auto_refresh: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -1012,7 +1031,7 @@ class SQLAlchemyAsyncRepositoryService(
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
         id_attribute: Optional[Union[str, InstrumentedAttribute[Any]]] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -1056,7 +1075,7 @@ class SQLAlchemyAsyncRepositoryService(
         auto_expunge: Optional[bool] = None,
         id_attribute: Optional[Union[str, InstrumentedAttribute[Any]]] = None,
         chunk_size: Optional[int] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,
         uniquify: Optional[bool] = None,
@@ -1100,7 +1119,7 @@ class SQLAlchemyAsyncRepositoryService(
         *filters: Union[StatementFilter, ColumnElement[bool]],
         auto_commit: Optional[bool] = None,
         auto_expunge: Optional[bool] = None,
-        error_messages: Union[ErrorMessages, None, EmptyType] = Empty,
+        error_messages: Optional[Union[ErrorMessages, EmptyType]] = Empty,
         sanity_check: bool = True,
         load: Optional[LoadSpec] = None,
         execution_options: Optional[dict[str, Any]] = None,

@@ -1,4 +1,4 @@
-# ruff: noqa: B008, PGH003
+# ruff: noqa: B008
 """Application dependency providers generators.
 
 This module contains functions to create dependency providers for services and filters.
@@ -13,6 +13,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    NamedTuple,
     Optional,
     TypedDict,
     TypeVar,
@@ -31,6 +32,7 @@ from advanced_alchemy.filters import (
     CollectionFilter,
     FilterTypes,
     LimitOffset,
+    NotInCollectionFilter,
     OrderBy,
     SearchFilter,
 )
@@ -43,13 +45,16 @@ from advanced_alchemy.service import (
     SQLAlchemyAsyncRepositoryService,
     SQLAlchemySyncRepositoryService,
 )
+from advanced_alchemy.utils.singleton import SingletonMeta
+from advanced_alchemy.utils.text import camelize
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy.orm import Session
 
-    from advanced_alchemy.config import SQLAlchemyAsyncConfig, SQLAlchemySyncConfig
+    from advanced_alchemy.extensions.litestar.plugins.init.config.asyncio import SQLAlchemyAsyncConfig
+    from advanced_alchemy.extensions.litestar.plugins.init.config.sync import SQLAlchemySyncConfig
 
 DTorNone = Optional[datetime.datetime]
 StringOrNone = Optional[str]
@@ -60,6 +65,8 @@ SortOrder = Literal["asc", "desc"]
 SortOrderOrNone = Optional[SortOrder]
 AsyncServiceT_co = TypeVar("AsyncServiceT_co", bound=SQLAlchemyAsyncRepositoryService[Any], covariant=True)
 SyncServiceT_co = TypeVar("SyncServiceT_co", bound=SQLAlchemySyncRepositoryService[Any], covariant=True)
+HashableValue = Union[str, int, float, bool, None]
+HashableType = Union[HashableValue, tuple[Any, ...], tuple[tuple[str, Any], ...], tuple[HashableValue, ...]]
 
 
 class DependencyDefaults:
@@ -69,11 +76,11 @@ class DependencyDefaults:
     """Key for the created filter dependency."""
     ID_FILTER_DEPENDENCY_KEY: str = "id_filter"
     """Key for the id filter dependency."""
-    LIMIT_OFFSET_DEPENDENCY_KEY: str = "limit_offset"
+    LIMIT_OFFSET_FILTER_DEPENDENCY_KEY: str = "limit_offset_filter"
     """Key for the limit offset dependency."""
     UPDATED_FILTER_DEPENDENCY_KEY: str = "updated_filter"
     """Key for the updated filter dependency."""
-    ORDER_BY_DEPENDENCY_KEY: str = "order_by"
+    ORDER_BY_FILTER_DEPENDENCY_KEY: str = "order_by_filter"
     """Key for the order by dependency."""
     SEARCH_FILTER_DEPENDENCY_KEY: str = "search_filter"
     """Key for the search filter dependency."""
@@ -84,10 +91,22 @@ class DependencyDefaults:
 DEPENDENCY_DEFAULTS = DependencyDefaults()
 
 
+class FieldNameType(NamedTuple):
+    """Type for field name and associated type information.
+
+    This allows for specifying both the field name and the expected type for filter values.
+    """
+
+    name: str
+    """Name of the field to filter on."""
+    type_hint: type[Any] = str
+    """Type of the filter value. Defaults to str."""
+
+
 class FilterConfig(TypedDict):
     """Configuration for generating dynamic filters."""
 
-    id_filter: NotRequired[type[Union[UUID, int]]]
+    id_filter: NotRequired[type[Union[UUID, int, str]]]
     """Indicates that the id filter should be enabled.  When set, the type specified will be used for the :class:`CollectionFilter`."""
     id_field: NotRequired[str]
     """The field on the model that stored the primary key or identifier."""
@@ -98,26 +117,19 @@ class FilterConfig(TypedDict):
     pagination_type: NotRequired[Literal["limit_offset"]]
     """When set, pagination is enabled based on the type specified."""
     pagination_size: NotRequired[int]
-    """The size of the pagination."""
-    search: NotRequired[str]
-    """When set, search is enabled for the specified fields."""
+    """The size of the pagination. Defaults to `DEFAULT_PAGINATION_SIZE`."""
+    search: NotRequired[Union[str, set[str], list[str]]]
+    """Fields to enable search on. Can be a comma-separated string or a set of field names."""
     search_ignore_case: NotRequired[bool]
     """When set, search is case insensitive by default."""
     created_at: NotRequired[bool]
     """When set, created_at filter is enabled."""
     updated_at: NotRequired[bool]
     """When set, updated_at filter is enabled."""
-
-
-class SingletonMeta(type):
-    """Metaclass for singleton pattern."""
-
-    _instances: dict[type, Any] = {}
-
-    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
-        if cls not in cls._instances:  # pyright: ignore[reportUnnecessaryContains]
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
+    not_in_fields: NotRequired[Union[FieldNameType, set[FieldNameType], list[Union[str, FieldNameType]]]]
+    """Fields that support not-in collection filters. Can be a single field or a set of fields with type information."""
+    in_fields: NotRequired[Union[FieldNameType, set[FieldNameType], list[Union[str, FieldNameType]]]]
+    """Fields that support in-collection filters. Can be a single field or a set of fields with type information."""
 
 
 class DependencyCache(metaclass=SingletonMeta):
@@ -175,14 +187,32 @@ def create_service_provider(
     uniquify: Optional[bool] = None,
     count_with_window_function: Optional[bool] = None,
 ) -> Callable[..., Union["AsyncGenerator[AsyncServiceT_co, None]", "Generator[SyncServiceT_co,None, None]"]]:
-    """Create a dependency provider for a service."""
-    if issubclass(service_class, SQLAlchemyAsyncRepositoryService) or service_class is SQLAlchemyAsyncRepositoryService:  # type: ignore[comparison-overlap]
+    """Create a dependency provider for a service with a configurable session key.
 
-        async def provide_async_service(
-            db_session: "Optional[AsyncSession]" = None,
-        ) -> "AsyncGenerator[AsyncServiceT_co, None]":  # type: ignore[union-attr,unused-ignore]
-            async with service_class.new(  # type: ignore[union-attr,unused-ignore]
-                session=db_session,  # type: ignore[arg-type, unused-ignore]
+    Args:
+        service_class: The service class inheriting from SQLAlchemyAsyncRepositoryService or SQLAlchemySyncRepositoryService.
+        statement: An optional SQLAlchemy Select statement to scope the service.
+        config: An optional SQLAlchemy configuration object.
+        error_messages: Optional custom error messages for the service.
+        load: Optional LoadSpec for eager loading relationships.
+        execution_options: Optional dictionary of execution options for SQLAlchemy.
+        uniquify: Optional flag to uniquify results.
+        count_with_window_function: Optional flag to use window function for counting.
+
+    Returns:
+        A dependency provider function suitable for Litestar's DI system.
+    """
+
+    session_dependency_key = config.session_dependency_key if config else "db_session"
+
+    if issubclass(service_class, SQLAlchemyAsyncRepositoryService) or service_class is SQLAlchemyAsyncRepositoryService:  # type: ignore[comparison-overlap]
+        session_type_annotation = "Optional[AsyncSession]"
+        return_type_annotation = AsyncGenerator[service_class, None]  # type: ignore[valid-type]
+
+        async def provide_service_async(*args: Any, **kwargs: Any) -> "AsyncGenerator[AsyncServiceT_co, None]":
+            db_session = cast("Optional[AsyncSession]", args[0] if args else kwargs.get(session_dependency_key))
+            async with service_class.new(  # type: ignore[union-attr]
+                session=db_session,  # type: ignore[arg-type]
                 statement=statement,
                 config=cast("Optional[SQLAlchemyAsyncConfig]", config),  # type: ignore[arg-type]
                 error_messages=error_messages,
@@ -193,13 +223,30 @@ def create_service_provider(
             ) as service:
                 yield service
 
-        return provide_async_service
+        session_param = inspect.Parameter(
+            name=session_dependency_key,
+            kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            default=Dependency(skip_validation=True),
+            annotation=session_type_annotation,
+        )
 
-    def provide_sync_service(
-        db_session: "Optional[Session]" = None,
-    ) -> "Generator[SyncServiceT_co, None, None]":
+        provider_signature = inspect.Signature(
+            parameters=[session_param],
+            return_annotation=return_type_annotation,
+        )
+        provide_service_async.__signature__ = provider_signature  # type: ignore[attr-defined]
+        provide_service_async.__annotations__ = {
+            session_dependency_key: session_type_annotation,
+            "return": return_type_annotation,
+        }
+        return provide_service_async
+    session_type_annotation = "Optional[Session]"
+    return_type_annotation = Generator[service_class, None, None]  # type: ignore[misc,assignment,valid-type]
+
+    def provide_service_sync(*args: Any, **kwargs: Any) -> "Generator[SyncServiceT_co, None, None]":
+        db_session = cast("Optional[Session]", args[0] if args else kwargs.get(session_dependency_key))
         with service_class.new(
-            session=db_session,  # type: ignore[arg-type, unused-ignore]
+            session=db_session,
             statement=statement,
             config=cast("Optional[SQLAlchemySyncConfig]", config),
             error_messages=error_messages,
@@ -210,7 +257,23 @@ def create_service_provider(
         ) as service:
             yield service
 
-    return provide_sync_service
+    session_param = inspect.Parameter(
+        name=session_dependency_key,
+        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        default=Dependency(skip_validation=True),
+        annotation=session_type_annotation,
+    )
+
+    provider_signature = inspect.Signature(
+        parameters=[session_param],
+        return_annotation=return_type_annotation,
+    )
+    provide_service_sync.__signature__ = provider_signature  # type: ignore[attr-defined]
+    provide_service_sync.__annotations__ = {
+        session_dependency_key: session_type_annotation,
+        "return": return_type_annotation,
+    }
+    return provide_service_sync
 
 
 def create_service_dependencies(
@@ -287,7 +350,7 @@ def create_filter_dependencies(
     Returns:
         A dependency provider function for the combined filter function.
     """
-    cache_key = sum(map(hash, config.items()))
+    cache_key = hash(_make_hashable(config))
     deps = dep_cache.get_dependencies(cache_key)
     if deps is not None:
         return deps
@@ -296,7 +359,38 @@ def create_filter_dependencies(
     return deps
 
 
-def _create_statement_filters(
+def _make_hashable(value: Any) -> HashableType:
+    """Convert a value into a hashable type.
+
+    This function converts any value into a hashable type by:
+    - Converting dictionaries to sorted tuples of (key, value) pairs
+    - Converting lists and sets to sorted tuples
+    - Preserving primitive types (str, int, float, bool, None)
+    - Converting any other type to its string representation
+
+    Args:
+        value: Any value that needs to be made hashable.
+
+    Returns:
+        A hashable version of the value.
+    """
+    if isinstance(value, dict):
+        # Convert dict to tuple of tuples with sorted keys
+        items = []
+        for k in sorted(value.keys()):  # pyright: ignore
+            v = value[k]  # pyright: ignore
+            items.append((str(k), _make_hashable(v)))  # pyright: ignore
+        return tuple(items)  # pyright: ignore
+    if isinstance(value, (list, set)):
+        hashable_items = [_make_hashable(item) for item in value]  # pyright: ignore
+        filtered_items = [item for item in hashable_items if item is not None]  # pyright: ignore
+        return tuple(sorted(filtered_items, key=str))
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    return str(value)
+
+
+def _create_statement_filters(  # noqa: C901
     config: FilterConfig, dep_defaults: DependencyDefaults = DEPENDENCY_DEFAULTS
 ) -> dict[str, Provide]:
     """Create filter dependencies based on configuration.
@@ -352,7 +446,7 @@ def _create_statement_filters(
         ) -> LimitOffset:
             return LimitOffset(page_size, page_size * (current_page - 1))
 
-        filters[dep_defaults.LIMIT_OFFSET_DEPENDENCY_KEY] = Provide(
+        filters[dep_defaults.LIMIT_OFFSET_FILTER_DEPENDENCY_KEY] = Provide(
             provide_limit_offset_pagination, sync_to_thread=False
         )
 
@@ -372,8 +466,11 @@ def _create_statement_filters(
                 required=False,
             ),
         ) -> SearchFilter:
+            # Handle both string and set input types for search fields
+            field_names = set(search_fields.split(",")) if isinstance(search_fields, str) else set(search_fields)
+
             return SearchFilter(
-                field_name=set(search_fields.split(",")),
+                field_name=field_names,
                 value=search_string,  # type: ignore[arg-type]
                 ignore_case=ignore_case or False,
             )
@@ -398,7 +495,62 @@ def _create_statement_filters(
         ) -> OrderBy:
             return OrderBy(field_name=field_name, sort_order=sort_order)  # type: ignore[arg-type]
 
-        filters[dep_defaults.ORDER_BY_DEPENDENCY_KEY] = Provide(provide_order_by, sync_to_thread=False)
+        filters[dep_defaults.ORDER_BY_FILTER_DEPENDENCY_KEY] = Provide(provide_order_by, sync_to_thread=False)
+
+    # Add not_in filter providers
+    if not_in_fields := config.get("not_in_fields"):
+        # Get all field names, handling both strings and FieldNameType objects
+        not_in_fields = {not_in_fields} if isinstance(not_in_fields, (str, FieldNameType)) else not_in_fields
+
+        for field_def in not_in_fields:
+            field_def = FieldNameType(name=field_def, type_hint=str) if isinstance(field_def, str) else field_def
+
+            def create_not_in_filter_provider(  # pyright: ignore
+                field_name: FieldNameType,
+            ) -> Callable[..., Optional[NotInCollectionFilter[field_def.type_hint]]]:  # type: ignore
+                def provide_not_in_filter(  # pyright: ignore
+                    values: Optional[list[field_name.type_hint]] = Parameter(  # type: ignore
+                        query=camelize(f"{field_name.name}_not_in"), default=None, required=False
+                    ),
+                ) -> Optional[NotInCollectionFilter[field_name.type_hint]]:  # type: ignore
+                    return (
+                        NotInCollectionFilter[field_name.type_hint](field_name=field_name.name, values=values)  # type: ignore
+                        if values
+                        else None
+                    )
+
+                return provide_not_in_filter  # pyright: ignore
+
+            provider = create_not_in_filter_provider(field_def)  # pyright: ignore
+            filters[f"{field_def.name}_not_in_filter"] = Provide(provider, sync_to_thread=False)  # pyright: ignore
+
+    # Add in filter providers
+    if in_fields := config.get("in_fields"):
+        # Get all field names, handling both strings and FieldNameType objects
+        in_fields = {in_fields} if isinstance(in_fields, (str, FieldNameType)) else in_fields
+
+        for field_def in in_fields:
+            field_def = FieldNameType(name=field_def, type_hint=str) if isinstance(field_def, str) else field_def
+
+            def create_in_filter_provider(  # pyright: ignore
+                field_name: FieldNameType,
+            ) -> Callable[..., Optional[CollectionFilter[field_def.type_hint]]]:  # type: ignore # pyright: ignore
+                def provide_in_filter(  # pyright: ignore
+                    values: Optional[list[field_name.type_hint]] = Parameter(  # type: ignore # pyright: ignore
+                        query=camelize(f"{field_name.name}_in"), default=None, required=False
+                    ),
+                ) -> Optional[CollectionFilter[field_name.type_hint]]:  # type: ignore # pyright: ignore
+                    return (
+                        CollectionFilter[field_name.type_hint](field_name=field_name.name, values=values)  # type: ignore  # pyright: ignore
+                        if values
+                        else None
+                    )
+
+                return provide_in_filter  # pyright: ignore
+
+            provider = create_in_filter_provider(field_def)  # type: ignore
+            filters[f"{field_def.name}_in_filter"] = Provide(provider, sync_to_thread=False)  # pyright: ignore
+
     if filters:
         filters[dep_defaults.FILTERS_DEPENDENCY_KEY] = Provide(
             _create_filter_aggregate_function(config), sync_to_thread=False
@@ -407,7 +559,7 @@ def _create_statement_filters(
     return filters
 
 
-def _create_filter_aggregate_function(config: FilterConfig) -> Callable[..., list[FilterTypes]]:
+def _create_filter_aggregate_function(config: FilterConfig) -> Callable[..., list[FilterTypes]]:  # noqa: C901, PLR0915
     """Create a filter function based on the provided configuration.
 
     Args:
@@ -458,22 +610,46 @@ def _create_filter_aggregate_function(config: FilterConfig) -> Callable[..., lis
         annotations["search_filter"] = SearchFilter
 
     if config.get("pagination_type") == "limit_offset":
-        parameters["limit_offset"] = inspect.Parameter(
-            name="limit_offset",
+        parameters["limit_offset_filter"] = inspect.Parameter(
+            name="limit_offset_filter",
             kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
             default=Dependency(skip_validation=True),
             annotation=LimitOffset,
         )
-        annotations["limit_offset"] = LimitOffset
+        annotations["limit_offset_filter"] = LimitOffset
 
     if config.get("sort_field"):
-        parameters["order_by"] = inspect.Parameter(
-            name="order_by",
+        parameters["order_by_filter"] = inspect.Parameter(
+            name="order_by_filter",
             kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
             default=Dependency(skip_validation=True),
             annotation=OrderBy,
         )
-        annotations["order_by"] = OrderBy
+        annotations["order_by_filter"] = OrderBy
+
+    # Add parameters for not_in filters
+    if not_in_fields := config.get("not_in_fields"):
+        for field_def in not_in_fields:
+            field_def = FieldNameType(name=field_def, type_hint=str) if isinstance(field_def, str) else field_def
+            parameters[f"{field_def.name}_not_in_filter"] = inspect.Parameter(
+                name=f"{field_def.name}_not_in_filter",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=Dependency(skip_validation=True),
+                annotation=NotInCollectionFilter[field_def.type_hint],  # type: ignore
+            )
+            annotations[f"{field_def.name}_not_in_filter"] = NotInCollectionFilter[field_def.type_hint]  # type: ignore
+
+    # Add parameters for in filters
+    if in_fields := config.get("in_fields"):
+        for field_def in in_fields:
+            field_def = FieldNameType(name=field_def, type_hint=str) if isinstance(field_def, str) else field_def
+            parameters[f"{field_def.name}_in_filter"] = inspect.Parameter(
+                name=f"{field_def.name}_in_filter",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=Dependency(skip_validation=True),
+                annotation=CollectionFilter[field_def.type_hint],  # type: ignore
+            )
+            annotations[f"{field_def.name}_in_filter"] = CollectionFilter[field_def.type_hint]  # type: ignore
 
     def provide_filters(**kwargs: FilterTypes) -> list[FilterTypes]:
         """Provide filter dependencies based on configuration.
@@ -489,7 +665,7 @@ def _create_filter_aggregate_function(config: FilterConfig) -> Callable[..., lis
             filters.append(id_filter)
         if created_filter := kwargs.get("created_filter"):
             filters.append(created_filter)
-        if limit_offset := kwargs.get("limit_offset"):
+        if limit_offset := kwargs.get("limit_offset_filter"):
             filters.append(limit_offset)
         if updated_filter := kwargs.get("updated_filter"):
             filters.append(updated_filter)
@@ -501,11 +677,31 @@ def _create_filter_aggregate_function(config: FilterConfig) -> Callable[..., lis
         ):
             filters.append(search_filter)
         if (
-            (order_by := cast("Optional[OrderBy]", kwargs.get("order_by")))
+            (order_by := cast("Optional[OrderBy]", kwargs.get("order_by_filter")))
             and order_by is not None  # pyright: ignore[reportUnnecessaryComparison]
             and order_by.field_name is not None  # pyright: ignore[reportUnnecessaryComparison]
         ):
             filters.append(order_by)
+
+        # Add not_in filters
+        if not_in_fields := config.get("not_in_fields"):
+            # Get all field names, handling both strings and FieldNameType objects
+            not_in_fields = {not_in_fields} if isinstance(not_in_fields, (str, FieldNameType)) else not_in_fields
+            for field_def in not_in_fields:
+                field_def = FieldNameType(name=field_def, type_hint=str) if isinstance(field_def, str) else field_def
+                filter_ = kwargs.get(f"{field_def.name}_not_in_filter")
+                if filter_ is not None:
+                    filters.append(filter_)
+
+        # Add in filters
+        if in_fields := config.get("in_fields"):
+            # Get all field names, handling both strings and FieldNameType objects
+            in_fields = {in_fields} if isinstance(in_fields, (str, FieldNameType)) else in_fields
+            for field_def in in_fields:
+                field_def = FieldNameType(name=field_def, type_hint=str) if isinstance(field_def, str) else field_def
+                filter_ = kwargs.get(f"{field_def.name}_in_filter")
+                if filter_ is not None:
+                    filters.append(filter_)
         return filters
 
     # Set both signature and annotations

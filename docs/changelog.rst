@@ -1,7 +1,241 @@
 :orphan:
 
-0.x Changelog
+1.x Changelog
 =============
+
+.. changelog:: 1.4.2
+    :date: 2025-05-04
+
+    .. change:: correct type hints for with_for_update to ForUpdateParameter
+        :type: bugfix
+        :pr: 465
+
+        This change fixes the type hint for the `with_for_update` parameter in the repositories.
+
+    .. change:: BigIntPrimaryKey does not respect schema names
+        :type: bugfix
+        :pr: 469
+        :issue: 466
+
+        BigIntPrimaryKey will now respect schema names.
+
+        Fixes #466
+
+
+.. changelog:: 1.4.1
+    :date: 2025-04-28
+
+    .. change:: raise if filter operator is not in `operators_map`
+        :type: bugfix
+        :pr: 463
+        :issue: 453
+
+        Raise exception if filter operator does not exist in operators_map
+
+        Fixes #453
+
+    .. change:: `uniquify` respects init method override
+        :type: bugfix
+        :pr: 462
+
+        Passing `uniquify` as an `__init__` argument now works as expected.
+
+
+.. changelog:: 1.4.0
+    :date: 2025-04-27
+
+    .. change:: PasswordHash field type
+        :type: feature
+        :pr: 452
+
+        Implements a PasswordHash field type with multiple supported backends.
+
+        Includes built-in backends for:
+        - `passlib`
+        - `argon2`
+        - `pwdlib`
+
+
+.. changelog:: 1.3.2
+    :date: 2025-04-25
+
+    .. change:: remove stringified type hint
+        :type: bugfix
+        :pr: 457
+
+        "De-stringifies" the Filter type hints to prevent runtime type resolutions in some cases
+
+    .. change:: FileObject native Pydantic Core integration
+        :type: bugfix
+        :pr: 458
+
+        File object will now serialize properly in pydantic.
+
+        More complete FastAPI examples added.
+
+
+.. changelog:: 1.3.1
+    :date: 2025-04-21
+
+    .. change:: updated example `litestar_service.py` model
+        :type: bugfix
+        :pr: 450
+        :issue: 449
+
+        ## fixes #449 relationship updated on models:
+        - AuthorModel
+        - BookModel
+
+    .. change:: `create_service_provider` supports any configuration now
+        :type: bugfix
+        :pr: 451
+
+        The Litestar service provider now allows a user to specify the specific dependency key to use for the session.  Previously the factory only worked with the `db_session` key.
+
+    .. change:: update service provider to use dynamic session dependency key
+        :type: bugfix
+        :pr: 454
+
+        Update the Litestar service provider to use dynamic session dependency key
+
+    .. change:: allows positional args for session
+        :type: feature
+        :pr: 455
+
+        This change allows for arguments to also be matched when generating a service provider closure.
+
+.. changelog:: 1.3.0
+    :date: 2025-04-18
+
+    .. change:: btn ui
+        :type: bugfix
+        :pr: 446
+
+        Corrects the button UI in the documentation under certain viewport sizes.
+
+    .. change:: add dependency provider
+        :type: feature
+        :pr: 431
+
+        Add dependency factories for filters.
+
+
+.. changelog:: 1.2.0
+    :date: 2025-04-15
+
+    .. change:: migration generation produces duplicated unique constraints
+        :type: bugfix
+        :pr: 434
+        :issue: 427
+
+        Removes column re-ordering component was incorrectly causing incorrect constraints to be genreated.
+
+        Fixes #427
+
+    .. change:: make `SentinelMixin` compatible with `MappedAsDataclass`
+        :type: bugfix
+        :pr: 442
+
+        `MappedAsDataclass` is a mixin introduced in SQLAlchemy 2.0. It introduces massive DX improvements to SQLAlchemy by introducing dataclass type validation to SQLAlchemy models. However, this mixin is incompatible with SQLAlchemy's recommended method of implementing a sentinel column as written in their [documentation](https://docs.sqlalchemy.org/en/20/core/connections.html#configuring-sentinel-columns).
+
+        This PR fixes this incompatibility as suggested by the SQLAlchemy maintainer in this [discussion](https://github.com/sqlalchemy/sqlalchemy/discussions/12519#discussioncomment-12804658).
+
+    .. change:: enable standard order by
+        :type: feature
+        :pr: 438
+
+        Enables the standard `UnaryOperator` order by support in addition to the existing `OrderingPair`
+
+    .. change:: additional filter configuration options
+        :type: feature
+        :pr: 444
+
+        Implements the following filters as configurable options:
+        - NotInCollection
+        - Collection
+
+        Search now also accepts a set of strings in addition to a comma delimmited list.
+
+
+.. changelog:: 1.1.1
+    :date: 2025-04-07
+
+    .. change:: fsspec is not installed
+        :type: bugfix
+        :pr: 432
+
+        Corrects an import issue when `fsspec` and `obstore` are both missing.
+
+
+.. changelog:: 1.1.0
+    :date: 2025-04-06
+
+    .. change:: add stamp command
+        :type: feature
+        :pr: 428
+
+        Adds the Alembic `stamp` command to the CLI that will stamp the current database state into the migrations directory.
+
+    .. change:: adds an `ExistsFilter` and `NotExists` filter
+        :type: feature
+        :pr: 336
+        :issue: 331
+
+        Implements new `Exists` and `NotExists` filters to more easily apply this type of logic to queries.
+
+        Closes #331
+
+    .. change:: fully migrate to `pytest-databases`
+        :type: feature
+        :pr: 430
+
+        Migrates all database fixtures to `pytest-database`
+
+    .. change:: file object data type
+        :type: feature
+        :pr: 291
+        :issue: 24
+
+        Implement a file data type that leverages `obstore` or `fsspec`.  Supports any supported FSSpec or Obstore backend it including `sftp`, `gcs`, `s3`, `local`, and more.
+
+    .. change:: Implements a `MultiFilter` type for complex searches
+        :type: feature
+        :pr: 311
+
+        This PR implements a "Multi-Filter" Filter type.
+
+        It allows:
+        - Create a collection of filters from an input
+        - Allows filters to be groups with and/or logic
+
+
+.. changelog:: 1.0.2
+    :date: 2025-04-01
+
+    .. change:: prevent forward resolution issues
+        :type: bugfix
+        :pr: 423
+
+        Removes some stringified representations to help with the forward resolution of `datetime` and `Collection`.
+
+    .. change:: correctly set `uniquify` from `new`
+        :type: bugfix
+        :pr: 424
+
+        Unquify is now correctly set when passed into the `new`/`init` methods.
+
+        Introduced tests for `sync_tools` utilities, including `maybe_async_`, `maybe_async_context`, `SoonValue`, `TaskGroup`, and others.
+
+        Improves coverage for async and sync function handling, context managers, and value management.
+
+
+
+    .. change:: remove accidental litestar import
+        :type: bugfix
+        :pr: 426
+
+        Remove an incorrect import of `console` from `litestar.cli._utils` and replace it with a correct import from `rich`. This change ensures proper functionality without unnecessary dependencies.
+
 
 .. changelog:: 1.0.1
     :date: 2025-03-19

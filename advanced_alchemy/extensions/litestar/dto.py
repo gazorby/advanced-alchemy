@@ -168,7 +168,7 @@ class SQLAlchemyDTO(AbstractDTO[T], Generic[T]):
             msg = f"Unhandled property type: '{orm_descriptor.property}'"  # pyright: ignore[reportUnknownMemberType]
             raise NotImplementedError(msg)
 
-        default, default_factory = _detect_defaults(elem)
+        default, default_factory = _detect_defaults(elem)  # pyright: ignore
 
         try:
             if (field_definition := model_type_hints[key]).origin in {
@@ -182,11 +182,11 @@ class SQLAlchemyDTO(AbstractDTO[T], Generic[T]):
                 msg = f"Expected 'Mapped' origin, got: '{field_definition.origin}'"
                 raise NotImplementedError(msg)
         except KeyError:
-            field_definition = parse_type_from_element(elem, orm_descriptor)  # pyright: ignore[reportUnknownArgumentType]
+            field_definition = parse_type_from_element(elem, orm_descriptor)  # pyright: ignore
 
-        dto_field = elem.info.get(DTO_FIELD_META_KEY) if hasattr(elem, "info") else None  # pyright: ignore[reportArgumentMemberType]
-        if dto_field is None and isinstance(orm_descriptor, InstrumentedAttribute) and hasattr(orm_descriptor, "info"):  # pyright: ignore[reportUnknownArgumentType]
-            dto_field = orm_descriptor.info.get(DTO_FIELD_META_KEY)  # pyright: ignore[reportArgumentMemberType]
+        dto_field = elem.info.get(DTO_FIELD_META_KEY) if hasattr(elem, "info") else None  # pyright: ignore
+        if dto_field is None and isinstance(orm_descriptor, InstrumentedAttribute) and hasattr(orm_descriptor, "info"):  # pyright: ignore
+            dto_field = orm_descriptor.info.get(DTO_FIELD_META_KEY)  # pyright: ignore
         if dto_field is None:
             dto_field = DTOField()
 
@@ -294,8 +294,6 @@ class SQLAlchemyDTO(AbstractDTO[T], Generic[T]):
 
         Raises:
             RuntimeError: If the mapper cannot be found for the model type.
-            NotImplementedError: If an unsupported property or extension type is encountered.
-            ImproperConfigurationError: If a type cannot be parsed from an element.
         """
         if (mapper := inspect(model_type)) is None:  # pragma: no cover # pyright: ignore[reportUnnecessaryComparison]
             msg = "Unexpected `None` value for mapper."  # type: ignore[unreachable]
@@ -330,7 +328,7 @@ class SQLAlchemyDTO(AbstractDTO[T], Generic[T]):
             should_skip_descriptor = False
             dto_field: Optional[DTOField] = None
             if hasattr(orm_descriptor, "property"):  # pyright: ignore[reportUnknownArgumentType]
-                dto_field = orm_descriptor.property.info.get(DTO_FIELD_META_KEY)  # pyright: ignore  # noqa: PGH003
+                dto_field = orm_descriptor.property.info.get(DTO_FIELD_META_KEY)  # pyright: ignore
 
             # Case 1
             is_field_marked_not_private = dto_field and dto_field.mark is not Mark.PRIVATE  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
@@ -370,7 +368,7 @@ class SQLAlchemyDTO(AbstractDTO[T], Generic[T]):
 
 def _detect_defaults(elem: ElementType) -> tuple[Any, Any]:
     default: Any = Empty
-    default_factory: Any = None  # pyright:ignore  # noqa: PGH003
+    default_factory: Any = None  # pyright:ignore
     if sqla_default := getattr(elem, "default", None):
         if sqla_default.is_scalar:
             default = sqla_default.arg
@@ -402,11 +400,11 @@ def parse_type_from_element(elem: ElementType, orm_descriptor: InspectionAttr) -
         elem: The SQLAlchemy element to parse.
         orm_descriptor: The attribute `elem` was extracted from.
 
+    Raises:
+        ImproperConfigurationError: If the type cannot be parsed.
+
     Returns:
         FieldDefinition: The parsed type.
-
-    Raises:
-        ImproperlyConfiguredException: If the type cannot be parsed.
     """
 
     if isinstance(elem, Column):
@@ -415,7 +413,7 @@ def parse_type_from_element(elem: ElementType, orm_descriptor: InspectionAttr) -
         return FieldDefinition.from_annotation(elem.type.python_type)
 
     if isinstance(elem, RelationshipProperty):
-        if elem.direction in (RelationshipDirection.ONETOMANY, RelationshipDirection.MANYTOMANY):
+        if elem.direction in {RelationshipDirection.ONETOMANY, RelationshipDirection.MANYTOMANY}:
             collection_type = FieldDefinition.from_annotation(elem.collection_class or list)  # pyright: ignore[reportUnknownMemberType]
             return FieldDefinition.from_annotation(collection_type.safe_generic_origin[elem.mapper.class_])
 
@@ -431,9 +429,7 @@ def parse_type_from_element(elem: ElementType, orm_descriptor: InspectionAttr) -
         return FieldDefinition.from_annotation(orm_descriptor.type.python_type)
 
     msg = f"Unable to parse type from element '{elem}'. Consider adding a type hint."
-    raise ImproperConfigurationError(
-        msg,
-    )
+    raise ImproperConfigurationError(msg)
 
 
 def detect_nullable_relationship(elem: RelationshipProperty[Any]) -> bool:

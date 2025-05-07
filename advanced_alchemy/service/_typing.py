@@ -1,3 +1,4 @@
+# ruff: noqa: DOC201, PLR6301
 """This is a simple wrapper around a few important classes in each library.
 
 This is used to ensure compatibility when one or more of the libraries are installed.
@@ -18,7 +19,7 @@ T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
 
 try:
-    from pydantic import BaseModel, FailFast, TypeAdapter  # pyright: ignore[reportGeneralTypeIssues]
+    from pydantic import BaseModel, FailFast, TypeAdapter  # pyright: ignore
 
     PYDANTIC_INSTALLED = True
 except ImportError:

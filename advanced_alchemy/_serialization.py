@@ -1,11 +1,14 @@
+# ruff: noqa: PLR6301
 import datetime
 import enum
 from typing import Any
 
 from typing_extensions import runtime_checkable
 
+from advanced_alchemy.exceptions import MissingDependencyError
+
 try:
-    from pydantic import BaseModel  # type: ignore # noqa: PGH003
+    from pydantic import BaseModel  # type: ignore
 
     PYDANTIC_INSTALLED = True
 except ImportError:
@@ -18,8 +21,13 @@ except ImportError:
         model_fields: ClassVar[dict[str, Any]]
 
         def model_dump_json(self, *args: Any, **kwargs: Any) -> str:
-            """Placeholder"""
-            return ""
+            """Placeholder for pydantic.BaseModel.model_dump_json
+
+            Returns:
+                The JSON representation of the model.
+            """
+            msg = "pydantic"
+            raise MissingDependencyError(msg)
 
     PYDANTIC_INSTALLED = False  # pyright: ignore[reportConstantRedefinition]
 
@@ -66,12 +74,20 @@ except ImportError:
 
 
 def convert_datetime_to_gmt_iso(dt: datetime.datetime) -> str:  # pragma: no cover
-    """Handle datetime serialization for nested timestamps."""
+    """Handle datetime serialization for nested timestamps.
+
+    Returns:
+        str: The ISO 8601 formatted datetime string.
+    """
     if not dt.tzinfo:
         dt = dt.replace(tzinfo=datetime.timezone.utc)
     return dt.isoformat().replace("+00:00", "Z")
 
 
 def convert_date_to_iso(dt: datetime.date) -> str:  # pragma: no cover
-    """Handle datetime serialization for nested timestamps."""
+    """Handle datetime serialization for nested timestamps.
+
+    Returns:
+        str: The ISO 8601 formatted date string.
+    """
     return dt.isoformat()
